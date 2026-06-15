@@ -1,4 +1,78 @@
 tag,label,sort_order
-tv__non-brand,TV,0
-it__non-brand,IT / Monitors,1
-audio__non-brand,Audio,2
+tv__non-brand,TV total,0
+tv__non-brand__art tv,TV | art TV,1
+tv__non-brand__black level,TV | black level,2
+tv__non-brand__color,TV | color,3
+tv__non-brand__dolby vision tv,TV | dolby vision TV,4
+tv__non-brand__ESG,TV | ESG,5
+tv__non-brand__hdr tv,TV | hdr TV,6
+tv__non-brand__micro rgb,TV | micro rgb,7
+tv__non-brand__mini-led tv,TV | mini-led TV,8
+tv__non-brand__oled tv,TV | oled TV,9
+tv__non-brand__picture quality,TV | picture quality,10
+tv__non-brand__reflection free,TV | reflection free,11
+tv__non-brand__smart tv,TV | smart TV,12
+tv__non-brand__tv brightness,TV | TV brightness,13
+tv__non-brand__tv for gaming,TV | TV for gaming,14
+tv__non-brand__tv resolution,TV | TV resolution,15
+tv__non-brand__tv size__55 inch tv,TV | TV size | 55 inch TV,16
+tv__non-brand__tv size__65 inch tv,TV | TV size | 65 inch TV,17
+tv__non-brand__tv size__75 inch tv,TV | TV size | 75 inch TV,18
+tv__non-brand__ultra large__100 inch tv,TV | ultra large | 100 inch TV,19
+tv__non-brand__ultra large__115 inch tv,TV | ultra large | 115 inch TV,20
+tv__non-brand__ultra large__85 inch tv,TV | ultra large | 85 inch TV,21
+tv__non-brand__ultra large__86 inch tv,TV | ultra large | 86 inch TV,22
+tv__non-brand__ultra large__large tv,TV | ultra large | large TV,23
+tv__non-brand__webOS & AI TV__ai tv,TV | webOS & AI TV | ai TV,24
+tv__non-brand__webOS & AI TV__tv operating system,TV | webOS & AI TV | TV operating system,25
+tv__non-brand__wireless tv,TV | wireless TV,26
+audio__non-brand,Audio | Total,27
+audio__non-brand__dolby atmos flexconnect,Audio | dolby atmos flexconnect,28
+audio__non-brand__dolby atmos soundbar,Audio | dolby atmos soundbar,29
+audio__non-brand__Home Audio / Surround Sound System,Audio | Home Audio  |  Surround Sound System,30
+audio__non-brand__Home Audio Connectivity,Audio | Home Audio Connectivity,31
+audio__non-brand__immersive sound,Audio | immersive sound,32
+audio__non-brand__multichannel audio,Audio | multichannel Audio,33
+audio__non-brand__spatial sound,Audio | spatial sound,34
+audio__non-brand__Speaker Sets / Combination,Audio | Speaker Sets  |  Combination,35
+audio__non-brand__bluetooth speaker,Audio | bluetooth speaker,36
+audio__non-brand__Connectivity,Audio | Connectivity,37
+audio__non-brand__outdoor speaker,Audio | outdoor speaker,38
+audio__non-brand__party speaker,Audio | party speaker,39
+audio__non-brand__portable speaker,Audio | portable speaker,40
+audio__non-brand__speaker battery life,Audio | speaker battery life,41
+audio__non-brand__Speaker Design / Size,Audio | Speaker Design  |  Size,42
+audio__non-brand__speaker sound quality,Audio | speaker sound quality,43
+"audio__non-brand__Water, Dust Resistance","Audio | Water, Dust Resistance",44
+it__non-brand,Monitor | Total,45
+it__non-brand__0.03ms response time monitor,Monitor | 0.03ms response time monitor,46
+it__non-brand__1ms response time monitor,Monitor | 1ms response time monitor,47
+it__non-brand__Anti glare monitor,Monitor | Anti glare monitor,48
+it__non-brand__Game Genre,Monitor | Game Genre,49
+it__non-brand__Gaming Monitor,Monitor | Gaming Monitor,50
+it__non-brand__High Resolution & clarity__4k monitor,Monitor | High Resolution & clarity | 4k monitor,51
+it__non-brand__High Resolution & clarity__5k gaming monitor,Monitor | High Resolution & clarity | 5k gaming monitor,52
+it__non-brand__High Resolution & clarity__5k2k gaming monitor,Monitor | High Resolution & clarity | 5k2k gaming monitor,53
+it__non-brand__High Resolution & clarity__6k gaming monitor,Monitor | High Resolution & clarity | 6k gaming monitor,54
+it__non-brand__High Resolution & clarity__ai upscaling gaming monitor,Monitor | High Resolution & clarity | ai upscaling gaming monitor,55
+it__non-brand__High Resolution & clarity__over 218 ppi monitor,Monitor | High Resolution & clarity | over 218 ppi monitor,56
+it__non-brand__High Resolution & clarity__qhd gaming monitor,Monitor | High Resolution & clarity | qhd gaming monitor,57
+it__non-brand__High Resolution & clarity__wqhd gaming monitor,Monitor | High Resolution & clarity | wqhd gaming monitor,58
+it__non-brand__Monitor Brightness__HDR/VesaHDR,Monitor | Monitor Brightness | HDR | VesaHDR,59
+it__non-brand__Monitor Brightness__Monitor Brightness,Monitor | Monitor Brightness | Monitor Brightness,60
+it__non-brand__Monitor Color Accuracy,Monitor | Monitor Color Accuracy,61
+it__non-brand__Monitor Connectivity,Monitor | Monitor Connectivity,62
+it__non-brand__Monitor Panel Type__mini-led,Monitor | Monitor Panel Type | mini-led,63
+it__non-brand__Monitor Panel Type__other panel type,Monitor | Monitor Panel Type | other panel type,64
+it__non-brand__Monitor Refresh rate__144hz gaming monitor,Monitor | Monitor Refresh rate | 144hz gaming monitor,65
+it__non-brand__Monitor Refresh rate__165 hz gaming monitor,Monitor | Monitor Refresh rate | 165 hz gaming monitor,66
+it__non-brand__Monitor Refresh rate__240hz gaming monitor,Monitor | Monitor Refresh rate | 240hz gaming monitor,67
+it__non-brand__Monitor Refresh rate__360hz gaming monitor,Monitor | Monitor Refresh rate | 360hz gaming monitor,68
+it__non-brand__Monitor Refresh rate__480hz gaming monitor,Monitor | Monitor Refresh rate | 480hz gaming monitor,69
+it__non-brand__Monitor Refresh rate__540hz gaming monitor,Monitor | Monitor Refresh rate | 540hz gaming monitor,70
+it__non-brand__Monitor Refresh rate__dual mode refresh rate gaming monitor,Monitor | Monitor Refresh rate | dual mode refresh rate gaming monitor,71
+it__non-brand__Monitor Refresh rate__over 1000hz gaming monitor,Monitor | Monitor Refresh rate | over 1000hz gaming monitor,72
+it__non-brand__Monitor Specs__Curved Monitor,Monitor | Monitor Specs | Curved Monitor,73
+it__non-brand__Monitor Specs__Monitor Aspec Ratio,Monitor | Monitor Specs | Monitor Aspec Ratio,74
+it__non-brand__Monitor Specs__Monitor Size,Monitor | Monitor Specs | Monitor Size,75
+it__non-brand__OLED Gaming Monitor,Monitor | OLED Gaming Monitor,76
