@@ -1,0 +1,32 @@
+{
+  "name": "semrush-aio-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "seed": "tsx scripts/seed.ts",
+    "import": "tsx scripts/import-csv.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.45.4",
+    "next": "14.2.35",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "recharts": "2.12.7"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/papaparse": "5.3.14",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "dotenv": "16.4.5",
+    "eslint": "8.57.0",
+    "eslint-config-next": "14.2.35",
+    "papaparse": "5.4.1",
+    "tsx": "4.16.2",
+    "typescript": "5.5.3"
+  }
+}
