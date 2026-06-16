@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && npm run import",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "seed": "tsx scripts/seed.ts",
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "2.45.4",
+    "@vercel/functions": "3.7.1",
     "next": "14.2.35",
     "papaparse": "5.4.1",
     "react": "18.3.1",

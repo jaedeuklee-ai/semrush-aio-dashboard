@@ -27,23 +27,23 @@ tv__non-brand__webOS & AI TV__ai tv,TV | webOS & AI TV | ai TV,24
 tv__non-brand__webOS & AI TV__tv operating system,TV | webOS & AI TV | TV operating system,25
 tv__non-brand__wireless tv,TV | wireless TV,26
 audio__non-brand,Audio | Total,27
-audio__non-brand__dolby atmos flexconnect,Audio | dolby atmos flexconnect,28
-audio__non-brand__dolby atmos soundbar,Audio | dolby atmos soundbar,29
-audio__non-brand__Home Audio / Surround Sound System,Audio | Home Audio  |  Surround Sound System,30
-audio__non-brand__Home Audio Connectivity,Audio | Home Audio Connectivity,31
-audio__non-brand__immersive sound,Audio | immersive sound,32
-audio__non-brand__multichannel audio,Audio | multichannel Audio,33
-audio__non-brand__spatial sound,Audio | spatial sound,34
-audio__non-brand__Speaker Sets / Combination,Audio | Speaker Sets  |  Combination,35
-audio__non-brand__bluetooth speaker,Audio | bluetooth speaker,36
-audio__non-brand__Connectivity,Audio | Connectivity,37
-audio__non-brand__outdoor speaker,Audio | outdoor speaker,38
-audio__non-brand__party speaker,Audio | party speaker,39
-audio__non-brand__portable speaker,Audio | portable speaker,40
-audio__non-brand__speaker battery life,Audio | speaker battery life,41
-audio__non-brand__Speaker Design / Size,Audio | Speaker Design  |  Size,42
-audio__non-brand__speaker sound quality,Audio | speaker sound quality,43
-"audio__non-brand__Water, Dust Resistance","Audio | Water, Dust Resistance",44
+audio__non-brand__Sound suite__dolby atmos flexconnect,Audio | dolby atmos flexconnect,28
+audio__non-brand__Sound suite__dolby atmos soundbar,Audio | dolby atmos soundbar,29
+audio__non-brand__Sound suite__Home Audio / Surround Sound System,Audio | Home Audio  |  Surround Sound System,30
+audio__non-brand__Sound suite__Home Audio Connectivity,Audio | Home Audio Connectivity,31
+audio__non-brand__Sound suite__immersive sound,Audio | immersive sound,32
+audio__non-brand__Sound suite__multichannel audio,Audio | multichannel Audio,33
+audio__non-brand__Sound suite__spatial sound,Audio | spatial sound,34
+audio__non-brand__speaker__Speaker Sets / Combination,Audio | Speaker Sets  |  Combination,35
+audio__non-brand__speaker__bluetooth speaker,Audio | bluetooth speaker,36
+audio__non-brand__speaker__Connectivity,Audio | Connectivity,37
+audio__non-brand__speaker__outdoor speaker,Audio | outdoor speaker,38
+audio__non-brand__speaker__party speaker,Audio | party speaker,39
+audio__non-brand__speaker__portable speaker,Audio | portable speaker,40
+audio__non-brand__speaker__speaker battery life,Audio | speaker battery life,41
+audio__non-brand__speaker__Speaker Design / Size,Audio | Speaker Design  |  Size,42
+audio__non-brand__speaker__speaker sound quality,Audio | speaker sound quality,43
+"audio__non-brand__speaker__Water, Dust Resistance","Audio | Water, Dust Resistance",44
 it__non-brand,Monitor | Total,45
 it__non-brand__0.03ms response time monitor,Monitor | 0.03ms response time monitor,46
 it__non-brand__1ms response time monitor,Monitor | 1ms response time monitor,47

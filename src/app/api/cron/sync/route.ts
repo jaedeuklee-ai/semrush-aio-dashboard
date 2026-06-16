@@ -1,28 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { waitUntil } from "@vercel/functions";
 import { getServerSupabase } from "@/lib/supabase";
 import { fetchVisibility } from "@/lib/semrush";
 import { BRANDS } from "@/config/brands";
+import { getState, runChunk } from "@/lib/backfill";
 
-// SEMrush sync into visibility_daily. Two modes:
+// SEMrush sync into visibility_daily. Modes:
 //
 //   Single day (used by Vercel Cron, see vercel.json):
 //     /api/cron/sync                         -> today (UTC)
 //     /api/cron/sync?token=ADMIN_TOKEN&date=2026-06-13
 //
-//   Range backfill (resume-able, for filling history):
-//     /api/cron/sync?token=ADMIN_TOKEN&start=2026-01-01&end=2026-06-15&max=30
-//     -> processes up to `max` days starting at `start`, then returns
-//        { done_through, next, complete }. Re-call with start=<next> until
-//        complete=true. Upserts are idempotent, so repeats are safe.
+//   Manual range (one call = up to `max` days, returns next):
+//     /api/cron/sync?token=ADMIN_TOKEN&start=2026-01-01&end=2026-06-15&max=10
+//
+//   Auto backfill (self-chaining — start once, walks to the end on its own):
+//     /api/cron/sync?token=ADMIN_TOKEN&start=2026-01-01&end=2026-06-16&chain=1
+//     -> returns immediately; poll progress with ?status=1
 //
 // Auth: Vercel Cron sends "Authorization: Bearer <CRON_SECRET>" automatically
 // when CRON_SECRET is set. Manual calls use ?token=<ADMIN_TOKEN>.
 
 export const dynamic = "force-dynamic";
-// Capped by your Vercel plan (Hobby is lower). If a range call times out,
-// use a smaller `max`.
-export const maxDuration = 300;
+// Vercel Hobby caps this at 60s; each chunk must finish within it.
+export const maxDuration = 60;
+
+const JOB = "visibility";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -69,8 +73,54 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const sb = getServerSupabase();
 
-  // ---------- Range backfill mode ----------
+  // ---------- Status check ----------
+  if (sp.get("status") === "1") {
+    const state = await getState(sb, JOB);
+    return NextResponse.json({ ok: true, job: JOB, state });
+  }
+
+  // ---------- Auto backfill (self-chaining) ----------
   const start = sp.get("start");
+  if (start && sp.get("chain") === "1") {
+    const end = sp.get("end") ?? todayUTC();
+    const max = Math.min(Math.max(Number(sp.get("max") ?? "2"), 1), 60);
+    if (!DATE_RE.test(start) || !DATE_RE.test(end)) {
+      return NextResponse.json({ error: "start/end must be YYYY-MM-DD" }, { status: 400 });
+    }
+    if (start > end) {
+      return NextResponse.json({ error: "start must be <= end" }, { status: 400 });
+    }
+
+    const token = sp.get("token");
+    const base = `${req.nextUrl.origin}${req.nextUrl.pathname}`;
+    const nextUrlFor = (s: string) => {
+      const u = new URL(base);
+      u.searchParams.set("start", s);
+      u.searchParams.set("end", end);
+      u.searchParams.set("max", String(max));
+      u.searchParams.set("chain", "1");
+      if (token) u.searchParams.set("token", token);
+      return u.toString();
+    };
+
+    const processDay = async (client: SupabaseClient, date: string): Promise<number> => {
+      const counts = await syncOneDay(client, date);
+      return Object.values(counts).reduce((a, b) => a + b, 0);
+    };
+
+    // Run in the background and return immediately so the chain isn't blocked.
+    waitUntil(runChunk({ sb, job: JOB, start, end, max, processDay, nextUrlFor }));
+    return NextResponse.json({
+      ok: true,
+      accepted: true,
+      job: JOB,
+      from: start,
+      to: end,
+      note: "Backfill started in the background. Poll progress with ?status=1.",
+    });
+  }
+
+  // ---------- Manual range mode ----------
   if (start) {
     const end = sp.get("end") ?? todayUTC();
     const max = Math.min(Math.max(Number(sp.get("max") ?? "30"), 1), 60);

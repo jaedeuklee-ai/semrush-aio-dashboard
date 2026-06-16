@@ -77,3 +77,16 @@ create table topic_citations (
 
 create index if not exists idx_topic_citations_tag  on topic_citations (tag);
 create index if not exists idx_topic_citations_date on topic_citations (date);
+
+-- ---------------------------------------------------------------------------
+-- Backfill progress (used by the self-chaining backfill in /api/cron/*).
+-- One row per job: 'visibility' | 'citations'. Lets you poll ?status=1.
+-- ---------------------------------------------------------------------------
+create table if not exists sync_state (
+  job        text primary key,            -- 'visibility' | 'citations'
+  end_date   date,                         -- target end of the current backfill
+  last_done  date,                         -- last day successfully processed
+  status     text,                         -- running | complete | error | stalled
+  message    text,
+  updated_at timestamptz default now()
+);
