@@ -3,6 +3,12 @@ import { getServerSupabase } from "./supabase";
 import { normalizeUrl } from "./url-normalize";
 import { BRANDS } from "@/config/brands";
 import { categoryOf, CATEGORY_TOTAL_TAG, type Category } from "./categories";
+import { ensurePrompt } from "./prompt-loader";
+
+// Max number of NEW prompts to fetch from SEMrush within a single tool call,
+// to stay under the function time limit. Cached prompts don't count, so repeat
+// calls progressively fill the cache.
+const ONDEMAND_FETCH_BUDGET = 4;
 
 // ---------------------------------------------------------------------------
 // Tools the agent can call. Each is a read-only query over the dashboard DB.
@@ -315,6 +321,24 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
     const tag = input.tag as string | undefined;
     const category = input.category as Category | undefined;
     const limit = (input.limit as number) ?? 15;
+
+    // On-demand: if a specific tag is given, fetch a bounded number of its
+    // not-yet-cached prompts from prompt_map so gaps can be computed.
+    let loadedNow = 0;
+    let remaining = 0;
+    if (tag) {
+      const mapRows = await sb.from("prompt_map").select("prompt").eq("tag", tag);
+      const prompts = (mapRows.data ?? []).map((r) => r.prompt as string);
+      for (const p of prompts) {
+        if (loadedNow >= ONDEMAND_FETCH_BUDGET) {
+          remaining++;
+          continue;
+        }
+        const fetched = await ensurePrompt(sb, tag, p);
+        if (fetched) loadedNow++;
+      }
+    }
+
     let q = sb
       .from("prompt_brands")
       .select("tag,prompt,volume,brands_amount,lg_present,samsung_present")
@@ -331,7 +355,16 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
     }));
     if (category) rows = rows.filter((r) => categoryOf(r.tag) === category);
     rows.sort((a, b) => b.volume - a.volume);
-    return { count: rows.length, prompts: rows.slice(0, limit) };
+    return {
+      count: rows.length,
+      loaded_now: loadedNow,
+      more_to_load: remaining > 0 ? remaining : 0,
+      note:
+        remaining > 0
+          ? "Some prompts for this tag aren't cached yet. Ask again to load more."
+          : null,
+      prompts: rows.slice(0, limit),
+    };
   }
 
   if (name === "prompt_sources") {
@@ -339,6 +372,7 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
     const prompt = input.prompt as string;
     const limit = (input.limit as number) ?? 15;
     if (!tag || !prompt) return { error: "tag and prompt required" };
+    await ensurePrompt(sb, tag, prompt);
     const owned = await sb.from("owned_content").select("url_normalized");
     if (owned.error) throw owned.error;
     const ownedSet = new Set((owned.data ?? []).map((r) => r.url_normalized as string));
@@ -369,6 +403,7 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
     const tag = input.tag as string;
     const prompt = input.prompt as string;
     if (!tag || !prompt) return { error: "tag and prompt required" };
+    await ensurePrompt(sb, tag, prompt);
     const { data, error } = await sb
       .from("prompt_fanout")
       .select("query,count")
@@ -385,6 +420,7 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
     const tag = input.tag as string;
     const prompt = input.prompt as string;
     if (!tag || !prompt) return { error: "tag and prompt required" };
+    await ensurePrompt(sb, tag, prompt);
     const { data, error } = await sb
       .from("prompt_brands")
       .select("brands_list,brands_amount,volume,lg_present,samsung_present,models")

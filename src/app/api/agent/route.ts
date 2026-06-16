@@ -27,7 +27,9 @@ When the user asks "where are we weak and what should we do", reason in this ord
 (3) prompt_sources on a target prompt → which domains/URLs currently win and their channel type; (4) prompt_fanout → the sub-intents the content must cover;
 (5) recommend concrete content: what to create/fix, which content TYPE fits (Reddit thread, PR, owned info page, Wiki…) based on which channels win in prompt_sources, and which fan-out sub-queries it must answer.
 
-Be concise and concrete, cite the numbers you retrieved, and answer in Korean. If a table is empty for the range, say so plainly rather than guessing.`;
+Be concise and concrete, cite the numbers you retrieved, and answer in Korean. If a table is empty for the range, say so plainly rather than guessing.
+
+Prompt-level data is fetched live from SEMrush on first use and then cached, so the first call for a new prompt may take a few seconds. For prompt_gaps, pass a specific tag so that topic's prompts get loaded; if it reports more_to_load > 0, tell the user you can load more on the next question.`;
 
 interface ClientMessage {
   role: "user" | "assistant";
