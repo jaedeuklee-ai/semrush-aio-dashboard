@@ -97,6 +97,9 @@ export default async function DashboardPage({
             />
             {BRANDS.competitor}
           </span>
+          <a className="navlink" href="/agent">
+            Ask AI →
+          </a>
         </div>
       </div>
 

@@ -4,13 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && npm run import",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "seed": "tsx scripts/seed.ts",
     "import": "tsx scripts/import-csv.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.104.2",
     "@supabase/supabase-js": "2.45.4",
     "@vercel/functions": "3.7.1",
     "next": "14.2.35",

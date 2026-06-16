@@ -90,3 +90,47 @@ create table if not exists sync_state (
   message    text,
   updated_at timestamptz default now()
 );
+
+-- ---------------------------------------------------------------------------
+-- Prompt-level layer (path A). prompt_map is user-provided (tag, prompt)
+-- pairs; the loader fills the other three from SEMrush.
+-- ---------------------------------------------------------------------------
+create table if not exists prompt_map (
+  tag        text not null,
+  prompt     text not null,
+  updated_at timestamptz default now(),
+  primary key (tag, prompt)
+);
+
+create table if not exists prompt_brands (
+  tag             text not null,
+  prompt          text not null,
+  brands_list     jsonb,
+  brands_amount   integer,
+  volume          integer,
+  lg_present      boolean,
+  samsung_present boolean,
+  models          jsonb,
+  updated_at      timestamptz default now(),
+  primary key (tag, prompt)
+);
+
+create table if not exists prompt_citations (
+  tag          text not null,
+  prompt       text not null,
+  source_url   text not null,
+  source_title text,
+  citations    integer,
+  latest_date  date,
+  updated_at   timestamptz default now(),
+  primary key (tag, prompt, source_url)
+);
+
+create table if not exists prompt_fanout (
+  tag        text not null,
+  prompt     text not null,
+  query      text not null,
+  count      integer,
+  updated_at timestamptz default now(),
+  primary key (tag, prompt, query)
+);
