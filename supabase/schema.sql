@@ -53,18 +53,27 @@ create table if not exists owned_content (
 
 -- ---------------------------------------------------------------------------
 -- Phase 3 baseline: topic-level cited sources (SEMrush element 553cd819).
--- Batch-synced for whitelisted topics. NOTE: column shape below is a sensible
--- starting point — adjust it to match the actual element response when you
--- wire ingestion (regenerate "Get API Request" and inspect the JSON).
+-- Filled by /api/cron/citations, which loops the topic_whitelist and stamps
+-- (date, tag) onto each row (the topic comes from the CBF_tags request filter,
+-- not the response). domain_type is SEMrush's channel class:
+-- Owned | Earned | Social | Other.
 -- ---------------------------------------------------------------------------
-create table if not exists topic_citations (
-  date           date not null,
-  tag            text not null,
-  source_domain  text not null,
-  source_url     text not null default '',       -- '' when only domain is known
-  citations      integer,
-  share          real,                           -- share of citations for the topic
-  primary key (date, tag, source_domain, source_url)
+drop table if exists topic_citations;
+create table topic_citations (
+  date                  date    not null,
+  tag                   text    not null,   -- from the request (CBF_tags)
+  source_url            text    not null,   -- the cited URL
+  domain                text,                -- derived from source_url
+  domain_type           text,                -- Owned | Earned | Social | Other
+  citation_share        real,
+  mentions              integer,
+  mentions_diff         integer,
+  position              real,
+  prompts_with_citation integer,
+  total_citations       integer,
+  total_responses       integer,
+  primary key (date, tag, source_url)
 );
 
-create index if not exists idx_topic_citations_tag on topic_citations (tag);
+create index if not exists idx_topic_citations_tag  on topic_citations (tag);
+create index if not exists idx_topic_citations_date on topic_citations (date);
