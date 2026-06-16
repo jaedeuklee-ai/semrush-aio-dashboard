@@ -1,21 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { waitUntil } from "@vercel/functions";
 import { getServerSupabase } from "@/lib/supabase";
 import { fetchTopicCitations } from "@/lib/semrush";
 import { normalizeUrl } from "@/lib/url-normalize";
+import { getState, runChunk } from "@/lib/backfill";
 
 // Fills topic_citations: for each tracked topic, the cited sources on a date.
 // Loops the topic_whitelist and calls SEMrush element 553cd819 per topic,
 // stamping (date, tag) onto every row (the topic isn't in the response).
 //
 //   Single day:   /api/cron/citations?token=ADMIN_TOKEN&date=2026-06-01
-//   Range:        /api/cron/citations?token=ADMIN_TOKEN&start=2026-01-01&end=2026-06-15&max=10
+//   Manual range: /api/cron/citations?token=ADMIN_TOKEN&start=2026-01-01&end=2026-06-15&max=2
+//   Auto backfill:/api/cron/citations?token=ADMIN_TOKEN&start=2026-01-01&end=2026-06-16&chain=1
+//                 (returns immediately; poll with ?status=1)
 //
-// One day = one SEMrush call per topic, so keep `max` small for range backfill.
+// One day = one SEMrush call per topic, so chunks stay small.
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // capped by your Vercel plan
+export const maxDuration = 60; // Vercel Hobby cap
 
+const JOB = "citations";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function authorized(req: NextRequest): boolean {
@@ -89,6 +94,12 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const sb = getServerSupabase();
 
+  // ---------- Status check ----------
+  if (sp.get("status") === "1") {
+    const state = await getState(sb, JOB);
+    return NextResponse.json({ ok: true, job: JOB, state });
+  }
+
   let tags: string[];
   try {
     tags = await getTags(sb);
@@ -105,8 +116,45 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // ---------- Range backfill ----------
+  const processDay = (client: SupabaseClient, date: string) => citationsForDay(client, tags, date);
+
+  // ---------- Auto backfill (self-chaining) ----------
   const start = sp.get("start");
+  if (start && sp.get("chain") === "1") {
+    const end = sp.get("end") ?? todayUTC();
+    const max = Math.min(Math.max(Number(sp.get("max") ?? "1"), 1), 60);
+    if (!DATE_RE.test(start) || !DATE_RE.test(end)) {
+      return NextResponse.json({ error: "start/end must be YYYY-MM-DD" }, { status: 400 });
+    }
+    if (start > end) {
+      return NextResponse.json({ error: "start must be <= end" }, { status: 400 });
+    }
+
+    const token = sp.get("token");
+    const base = `${req.nextUrl.origin}${req.nextUrl.pathname}`;
+    const nextUrlFor = (s: string) => {
+      const u = new URL(base);
+      u.searchParams.set("start", s);
+      u.searchParams.set("end", end);
+      u.searchParams.set("max", String(max));
+      u.searchParams.set("chain", "1");
+      if (token) u.searchParams.set("token", token);
+      return u.toString();
+    };
+
+    waitUntil(runChunk({ sb, job: JOB, start, end, max, processDay, nextUrlFor }));
+    return NextResponse.json({
+      ok: true,
+      accepted: true,
+      job: JOB,
+      topics: tags.length,
+      from: start,
+      to: end,
+      note: "Backfill started in the background. Poll progress with ?status=1.",
+    });
+  }
+
+  // ---------- Manual range mode ----------
   if (start) {
     const end = sp.get("end") ?? todayUTC();
     const max = Math.min(Math.max(Number(sp.get("max") ?? "10"), 1), 60);
