@@ -461,3 +461,29 @@ body {
   height: 400px;
   min-height: 0;
 }
+
+/* ---------- login gate ---------- */
+.login {
+  min-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login__card {
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+.login__input {
+  width: 100%;
+  margin: 16px 0 8px;
+}
+.login__btn {
+  width: 100%;
+  margin-top: 8px;
+}
+.login__err {
+  color: var(--lg, #a50034);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
