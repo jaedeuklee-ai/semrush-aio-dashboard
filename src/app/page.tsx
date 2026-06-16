@@ -117,8 +117,8 @@ export default async function DashboardPage({
       )}
 
       <Filters
+        allTopics={topics}
         category={category}
-        topics={categoryTopics}
         selectedTopic={selectedTopic}
         start={start}
         end={end}

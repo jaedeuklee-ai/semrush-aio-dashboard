@@ -1,48 +1,51 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import type { Topic } from "@/lib/types";
-import { CATEGORIES, type Category } from "@/lib/categories";
+import { CATEGORIES, CATEGORY_TOTAL_TAG, categoryOf, type Category } from "@/lib/categories";
 
 interface Props {
-  category: Category;
-  topics: Topic[]; // already filtered to the selected category (Total first)
+  allTopics: Topic[]; // full whitelist; the topic dropdown is scoped client-side
+  category: Category; // currently applied values (used to init local state)
   selectedTopic: string;
   start: string;
   end: string;
 }
 
-export default function Filters({ category, topics, selectedTopic, start, end }: Props) {
+export default function Filters({ allTopics, category, selectedTopic, start, end }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
 
-  const push = useCallback(
-    (params: URLSearchParams) => router.push(`${pathname}?${params.toString()}`),
-    [router, pathname],
-  );
+  const [cat, setCat] = useState<Category>(category);
+  const [topic, setTopic] = useState<string>(selectedTopic);
+  const [from, setFrom] = useState<string>(start);
+  const [to, setTo] = useState<string>(end);
 
-  const update = useCallback(
-    (key: string, value: string) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set(key, value);
-      push(params);
-    },
-    [searchParams, push],
-  );
+  // Topics for the locally-selected category, Total first.
+  const categoryTopics = useMemo(() => {
+    const total = CATEGORY_TOTAL_TAG[cat];
+    return allTopics
+      .filter((t) => categoryOf(t.tag) === cat)
+      .sort((a, b) => (a.tag === total ? -1 : b.tag === total ? 1 : 0));
+  }, [allTopics, cat]);
 
-  // Changing the category resets the topic so the page falls back to that
-  // category's Total.
-  const changeCategory = useCallback(
-    (value: string) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("category", value);
-      params.delete("topic");
-      push(params);
-    },
-    [searchParams, push],
-  );
+  function onCategory(value: string) {
+    const next = value as Category;
+    setCat(next);
+    setTopic(CATEGORY_TOTAL_TAG[next]); // reset to that category's Total
+  }
+
+  function apply() {
+    const params = new URLSearchParams();
+    params.set("category", cat);
+    params.set("topic", topic);
+    params.set("start", from);
+    params.set("end", to);
+    router.push(`/?${params.toString()}`);
+  }
+
+  const dirty =
+    cat !== category || topic !== selectedTopic || from !== start || to !== end;
 
   return (
     <div className="filters">
@@ -53,8 +56,8 @@ export default function Filters({ category, topics, selectedTopic, start, end }:
         <select
           id="category"
           className="select select--sm"
-          value={category}
-          onChange={(e) => changeCategory(e.target.value)}
+          value={cat}
+          onChange={(e) => onCategory(e.target.value)}
         >
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>
@@ -71,10 +74,10 @@ export default function Filters({ category, topics, selectedTopic, start, end }:
         <select
           id="topic"
           className="select"
-          value={selectedTopic}
-          onChange={(e) => update("topic", e.target.value)}
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
         >
-          {topics.map((t) => (
+          {categoryTopics.map((t) => (
             <option key={t.tag} value={t.tag}>
               {t.label ?? t.tag}
             </option>
@@ -90,9 +93,9 @@ export default function Filters({ category, topics, selectedTopic, start, end }:
           id="start"
           className="input"
           type="date"
-          value={start}
-          max={end}
-          onChange={(e) => update("start", e.target.value)}
+          value={from}
+          max={to}
+          onChange={(e) => setFrom(e.target.value)}
         />
       </div>
 
@@ -104,10 +107,17 @@ export default function Filters({ category, topics, selectedTopic, start, end }:
           id="end"
           className="input"
           type="date"
-          value={end}
-          min={start}
-          onChange={(e) => update("end", e.target.value)}
+          value={to}
+          min={from}
+          onChange={(e) => setTo(e.target.value)}
         />
+      </div>
+
+      <div className="field">
+        <span className="field__label">&nbsp;</span>
+        <button className="btn" onClick={apply} disabled={!dirty}>
+          Apply
+        </button>
       </div>
     </div>
   );

@@ -313,3 +313,31 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- apply button + table hierarchy ---------- */
+.btn {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  padding: 9px 20px;
+  cursor: pointer;
+}
+.btn:hover {
+  opacity: 0.9;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.table .left {
+  text-align: left;
+}
+.table tr.total-row td {
+  background: var(--line-2, #f1f0ee);
+  font-weight: 650;
+}
