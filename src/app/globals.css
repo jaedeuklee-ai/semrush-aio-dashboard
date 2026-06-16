@@ -283,3 +283,33 @@ body {
     transition: none !important;
   }
 }
+
+/* ---------- category dashboard additions ---------- */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.select--sm {
+  min-width: 130px;
+}
+
+.minis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.mini__title {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-2);
+  margin: 0 0 6px;
+}
+
+@media (max-width: 820px) {
+  .minis {
+    grid-template-columns: 1fr;
+  }
+}

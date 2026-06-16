@@ -16,13 +16,19 @@ function pct(v: number | null | undefined): string {
   return v == null ? "—" : `${(v * 100).toFixed(1)}%`;
 }
 
-export default function TopicBrandChart({ data }: { data: DailyBrandPoint[] }) {
+export default function TopicBrandChart({
+  data,
+  height = 280,
+}: {
+  data: DailyBrandPoint[];
+  height?: number;
+}) {
   if (data.length === 0) {
     return <p className="empty">No data for this topic in the selected range.</p>;
   }
 
   return (
-    <div className="chart">
+    <div className="chart" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
           <CartesianGrid stroke="var(--line-2)" vertical={false} />
