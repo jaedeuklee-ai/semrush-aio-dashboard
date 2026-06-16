@@ -6,8 +6,9 @@ import { BRANDS } from "@/config/brands";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // Vercel Hobby cap
 
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
-const MAX_ROUNDS = 6; // tool-use loop safety cap
+const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+const MAX_ROUNDS = 6;
 
 const SYSTEM = `You are an AI Search Visibility analyst for ${BRANDS.own}, comparing against ${BRANDS.competitor}.
 The data measures how often each brand is cited/mentioned in AI answers (ChatGPT, Perplexity, AI Overviews) for tracked topics.
@@ -36,16 +37,130 @@ interface ClientMessage {
   content: string;
 }
 
-export async function POST(req: NextRequest) {
+// --------------------------- Claude (Anthropic) ---------------------------
+async function runClaude(incoming: ClientMessage[]): Promise<{ reply: string; toolsUsed: string[] }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY is not set. Add it in Vercel project settings." },
-      { status: 500 },
-    );
-  }
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set. Add it in Vercel project settings.");
+  const anthropic = new Anthropic({ apiKey });
+  const messages: Anthropic.MessageParam[] = incoming.map((m) => ({ role: m.role, content: m.content }));
+  const toolsUsed: string[] = [];
 
-  let body: { messages?: ClientMessage[] };
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const resp = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 1800,
+      system: SYSTEM,
+      tools: TOOLS,
+      messages,
+    });
+    if (resp.stop_reason === "tool_use") {
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const block of resp.content) {
+        if (block.type === "tool_use") {
+          toolsUsed.push(block.name);
+          let result: unknown;
+          try {
+            result = await runTool(block.name, block.input as Record<string, unknown>);
+          } catch (e) {
+            result = { error: e instanceof Error ? e.message : String(e) };
+          }
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
+        }
+      }
+      messages.push({ role: "assistant", content: resp.content });
+      messages.push({ role: "user", content: toolResults });
+      continue;
+    }
+    const text = resp.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+    return { reply: text, toolsUsed };
+  }
+  return { reply: "분석 단계가 너무 많아 중단했어요. 질문을 더 좁혀서 다시 물어봐 주세요.", toolsUsed };
+}
+
+// ------------------------------- Gemini ------------------------------------
+interface GeminiPart {
+  text?: string;
+  functionCall?: { name: string; args?: Record<string, unknown> };
+  functionResponse?: { name: string; response: Record<string, unknown> };
+}
+interface GeminiContent {
+  role: "user" | "model" | "function";
+  parts: GeminiPart[];
+}
+
+async function runGemini(incoming: ClientMessage[]): Promise<{ reply: string; toolsUsed: string[] }> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not set. Add it in Vercel project settings.");
+
+  const functionDeclarations = TOOLS.map((t) => ({
+    name: t.name,
+    description: t.description,
+    parameters: t.input_schema,
+  }));
+
+  const contents: GeminiContent[] = incoming.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+  const toolsUsed: string[] = [];
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents,
+        tools: [{ functionDeclarations }],
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Gemini ${res.status}: ${text.slice(0, 300)}`);
+    }
+    const json = (await res.json()) as {
+      candidates?: { content?: { parts?: GeminiPart[] } }[];
+    };
+    const parts = json.candidates?.[0]?.content?.parts ?? [];
+    const calls = parts.filter((p) => p.functionCall);
+
+    if (calls.length > 0) {
+      contents.push({ role: "model", parts });
+      const responseParts: GeminiPart[] = [];
+      for (const c of calls) {
+        const name = c.functionCall!.name;
+        toolsUsed.push(name);
+        let result: unknown;
+        try {
+          result = await runTool(name, c.functionCall!.args ?? {});
+        } catch (e) {
+          result = { error: e instanceof Error ? e.message : String(e) };
+        }
+        responseParts.push({ functionResponse: { name, response: { result } } });
+      }
+      contents.push({ role: "function", parts: responseParts });
+      continue;
+    }
+
+    const text = parts
+      .map((p) => p.text)
+      .filter((t): t is string => typeof t === "string")
+      .join("\n")
+      .trim();
+    return { reply: text, toolsUsed };
+  }
+  return { reply: "분석 단계가 너무 많아 중단했어요. 질문을 더 좁혀서 다시 물어봐 주세요.", toolsUsed };
+}
+
+export async function POST(req: NextRequest) {
+  let body: { messages?: ClientMessage[]; model?: string };
   try {
     body = await req.json();
   } catch {
@@ -56,62 +171,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "no messages" }, { status: 400 });
   }
 
-  const anthropic = new Anthropic({ apiKey });
-
-  // Seed the working transcript from the plain client history.
-  const messages: Anthropic.MessageParam[] = incoming.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
-
-  const toolsUsed: string[] = [];
-
   try {
-    for (let round = 0; round < MAX_ROUNDS; round++) {
-      const resp = await anthropic.messages.create({
-        model: MODEL,
-        max_tokens: 1800,
-        system: SYSTEM,
-        tools: TOOLS,
-        messages,
-      });
-
-      if (resp.stop_reason === "tool_use") {
-        const toolResults: Anthropic.ToolResultBlockParam[] = [];
-        for (const block of resp.content) {
-          if (block.type === "tool_use") {
-            toolsUsed.push(block.name);
-            let result: unknown;
-            try {
-              result = await runTool(block.name, block.input as Record<string, unknown>);
-            } catch (e) {
-              result = { error: e instanceof Error ? e.message : String(e) };
-            }
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: block.id,
-              content: JSON.stringify(result),
-            });
-          }
-        }
-        messages.push({ role: "assistant", content: resp.content });
-        messages.push({ role: "user", content: toolResults });
-        continue;
-      }
-
-      // Final answer
-      const text = resp.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("\n")
-        .trim();
-      return NextResponse.json({ reply: text, toolsUsed });
-    }
-
-    return NextResponse.json({
-      reply: "분석이 너무 많은 단계를 필요로 해서 중단했어요. 질문을 더 좁혀서 다시 물어봐 주세요.",
-      toolsUsed,
-    });
+    const out = body.model === "gemini" ? await runGemini(incoming) : await runClaude(incoming);
+    return NextResponse.json(out);
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e) },

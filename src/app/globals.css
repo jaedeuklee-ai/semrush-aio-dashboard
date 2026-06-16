@@ -441,3 +441,23 @@ body {
   outline: none;
   border-color: var(--ink-2, #6b6b6b);
 }
+
+/* ---------- chat model bar + compact (embedded) ---------- */
+.chat__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--line, #e5e3df);
+}
+.chat__name {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ink);
+}
+.chat--compact {
+  height: 400px;
+  min-height: 0;
+}

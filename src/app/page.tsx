@@ -1,4 +1,5 @@
 import Filters from "@/components/Filters";
+import AgentChat from "@/components/AgentChat";
 import TopicBrandChart from "@/components/TopicBrandChart";
 import CategoryTotals, { type CategorySeries } from "@/components/CategoryTotals";
 import TopicAverageTable from "@/components/TopicAverageTable";
@@ -118,6 +119,8 @@ export default async function DashboardPage({
           </p>
         </div>
       )}
+
+      <AgentChat compact />
 
       <Filters
         allTopics={topics}
