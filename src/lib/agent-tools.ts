@@ -15,8 +15,26 @@ const ONDEMAND_FETCH_BUDGET = 4;
 // Keep outputs compact — they go back into the model's context.
 // ---------------------------------------------------------------------------
 
-function defaultRange(start?: string, end?: string): { start: string; end: string } {
-  const e = end ?? new Date().toISOString().slice(0, 10);
+// The newest date actually present in the data (so ranges track real data,
+// not the server clock).
+async function latestDataDate(sb: ReturnType<typeof getServerSupabase>): Promise<string | null> {
+  const { data } = await sb
+    .from("visibility_daily")
+    .select("date")
+    .order("date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.date as string) ?? null;
+}
+
+// Resolve a date range: default end = latest available date, start = end − 29d.
+async function resolveRange(
+  sb: ReturnType<typeof getServerSupabase>,
+  start?: string,
+  end?: string,
+): Promise<{ start: string; end: string }> {
+  let e = end;
+  if (!e) e = (await latestDataDate(sb)) ?? new Date().toISOString().slice(0, 10);
   let s = start;
   if (!s) {
     const d = new Date(e + "T00:00:00Z");
@@ -28,7 +46,58 @@ function defaultRange(start?: string, end?: string): { start: string; end: strin
 
 const round = (v: number | null) => (v == null ? null : Math.round(v * 1000) / 1000);
 
+// Normalize a tag/topic string for forgiving comparison (case, spaces,
+// underscores, separators all collapse).
+function normTag(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+async function allKnownTags(sb: ReturnType<typeof getServerSupabase>): Promise<string[]> {
+  const wl = await sb.from("topic_whitelist").select("tag");
+  const pm = await sb.from("prompt_map").select("tag");
+  const set = new Set<string>();
+  (wl.data ?? []).forEach((r) => set.add(r.tag as string));
+  (pm.data ?? []).forEach((r) => set.add(r.tag as string));
+  return [...set];
+}
+
+// Map whatever the model passed (often a guessed tag like "tv__oled_tv" or
+// "oled tv") to a real tag. Returns the resolved tag, or candidates to suggest.
+async function resolveTag(
+  sb: ReturnType<typeof getServerSupabase>,
+  raw: string,
+): Promise<{ tag?: string; candidates?: string[] }> {
+  const tags = await allKnownTags(sb);
+  if (tags.includes(raw)) return { tag: raw };
+  const n = normTag(raw);
+  const exact = tags.find((t) => normTag(t) === n);
+  if (exact) return { tag: exact };
+  const contains = tags.filter((t) => {
+    const tn = normTag(t);
+    return tn.includes(n) || n.includes(tn);
+  });
+  if (contains.length === 1) return { tag: contains[0] };
+  if (contains.length > 1) return { candidates: contains.slice(0, 10) };
+  const tokens = n.split(" ").filter(Boolean);
+  const scored = tags
+    .map((t) => {
+      const tn = normTag(t);
+      return { t, score: tokens.filter((tok) => tn.includes(tok)).length };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (scored.length && scored[0].score === tokens.length) return { tag: scored[0].t };
+  if (scored.length) return { candidates: scored.slice(0, 10).map((x) => x.t) };
+  return { candidates: [] };
+}
+
 export const TOOLS: Anthropic.Tool[] = [
+  {
+    name: "data_coverage",
+    description:
+      "Report what data actually exists: the earliest and latest date and row counts per table (visibility, topic citations, prompt-level tables). ALWAYS call this first if you are unsure which dates have data — do not assume the current year. Use the latest available date as the basis for ranges.",
+    input_schema: { type: "object", properties: {} },
+  },
   {
     name: "list_topics",
     description:
@@ -157,6 +226,28 @@ type ToolInput = Record<string, unknown>;
 export async function runTool(name: string, input: ToolInput): Promise<unknown> {
   const sb = getServerSupabase();
 
+  if (name === "data_coverage") {
+    async function span(table: string, dateCol: string | null) {
+      const countRes = await sb.from(table).select("*", { count: "exact", head: true });
+      const out: Record<string, unknown> = { rows: countRes.count ?? 0 };
+      if (dateCol) {
+        const min = await sb.from(table).select(dateCol).order(dateCol, { ascending: true }).limit(1).maybeSingle();
+        const max = await sb.from(table).select(dateCol).order(dateCol, { ascending: false }).limit(1).maybeSingle();
+        out.earliest = (min.data as Record<string, unknown> | null)?.[dateCol] ?? null;
+        out.latest = (max.data as Record<string, unknown> | null)?.[dateCol] ?? null;
+      }
+      return out;
+    }
+    return {
+      visibility_daily: await span("visibility_daily", "date"),
+      topic_citations: await span("topic_citations", "date"),
+      prompt_brands: await span("prompt_brands", null),
+      prompt_citations: await span("prompt_citations", null),
+      prompt_fanout: await span("prompt_fanout", null),
+      prompt_map: await span("prompt_map", null),
+    };
+  }
+
   if (name === "list_topics") {
     const category = input.category as Category | undefined;
     const { data, error } = await sb.from("topic_whitelist").select("tag,label");
@@ -171,9 +262,20 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
   }
 
   if (name === "topic_visibility") {
-    const tags = (input.tags as string[]) ?? [];
-    if (tags.length === 0) return { error: "no tags provided" };
-    const { start, end } = defaultRange(input.start as string, input.end as string);
+    const rawTags = (input.tags as string[]) ?? [];
+    if (rawTags.length === 0) return { error: "no tags provided" };
+    const resolved: string[] = [];
+    const unresolved: { input: string; did_you_mean: string[] }[] = [];
+    for (const rt of rawTags) {
+      const r = await resolveTag(sb, rt);
+      if (r.tag) resolved.push(r.tag);
+      else unresolved.push({ input: rt, did_you_mean: r.candidates ?? [] });
+    }
+    const tags = resolved;
+    if (tags.length === 0) {
+      return { error: "none of the tags were found", unresolved };
+    }
+    const { start, end } = await resolveRange(sb, input.start as string, input.end as string);
     const { data, error } = await sb
       .from("visibility_daily")
       .select("tag,brand,visibility")
@@ -199,13 +301,13 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
       const sa = avg(a.sa);
       return { tag, lg: round(lg), samsung: round(sa), gap: lg != null && sa != null ? round(lg - sa) : null };
     });
-    return { range: { start, end }, rows };
+    return { range: { start, end }, rows, unresolved: unresolved.length ? unresolved : undefined };
   }
 
   if (name === "weak_topics") {
     const category = input.category as Category | undefined;
     const limit = (input.limit as number) ?? 10;
-    const { start, end } = defaultRange(input.start as string, input.end as string);
+    const { start, end } = await resolveRange(sb, input.start as string, input.end as string);
 
     const wl = await sb.from("topic_whitelist").select("tag,label");
     if (wl.error) throw wl.error;
@@ -255,9 +357,12 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
   }
 
   if (name === "topic_citations" || name === "owned_coverage") {
-    const tag = input.tag as string;
-    if (!tag) return { error: "no tag provided" };
-    const { start, end } = defaultRange(input.start as string, input.end as string);
+    const rawTag = input.tag as string;
+    if (!rawTag) return { error: "no tag provided" };
+    const rt = await resolveTag(sb, rawTag);
+    if (!rt.tag) return { error: `tag not found: "${rawTag}"`, did_you_mean: rt.candidates ?? [] };
+    const tag = rt.tag;
+    const { start, end } = await resolveRange(sb, input.start as string, input.end as string);
 
     const { data, error } = await sb
       .from("topic_citations")
@@ -318,9 +423,18 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
   }
 
   if (name === "prompt_gaps") {
-    const tag = input.tag as string | undefined;
+    const rawTag = input.tag as string | undefined;
     const category = input.category as Category | undefined;
     const limit = (input.limit as number) ?? 15;
+
+    let tag: string | undefined;
+    if (rawTag) {
+      const r = await resolveTag(sb, rawTag);
+      if (!r.tag) {
+        return { error: `tag not found: "${rawTag}"`, did_you_mean: r.candidates ?? [] };
+      }
+      tag = r.tag;
+    }
 
     // On-demand: if a specific tag is given, fetch a bounded number of its
     // not-yet-cached prompts from prompt_map so gaps can be computed.
@@ -368,10 +482,13 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
   }
 
   if (name === "prompt_sources") {
-    const tag = input.tag as string;
+    const rawTag = input.tag as string;
     const prompt = input.prompt as string;
     const limit = (input.limit as number) ?? 15;
-    if (!tag || !prompt) return { error: "tag and prompt required" };
+    if (!rawTag || !prompt) return { error: "tag and prompt required" };
+    const rt = await resolveTag(sb, rawTag);
+    if (!rt.tag) return { error: `tag not found: "${rawTag}"`, did_you_mean: rt.candidates ?? [] };
+    const tag = rt.tag;
     await ensurePrompt(sb, tag, prompt);
     const owned = await sb.from("owned_content").select("url_normalized");
     if (owned.error) throw owned.error;
@@ -400,9 +517,12 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
   }
 
   if (name === "prompt_fanout") {
-    const tag = input.tag as string;
+    const rawTag = input.tag as string;
     const prompt = input.prompt as string;
-    if (!tag || !prompt) return { error: "tag and prompt required" };
+    if (!rawTag || !prompt) return { error: "tag and prompt required" };
+    const rt = await resolveTag(sb, rawTag);
+    if (!rt.tag) return { error: `tag not found: "${rawTag}"`, did_you_mean: rt.candidates ?? [] };
+    const tag = rt.tag;
     await ensurePrompt(sb, tag, prompt);
     const { data, error } = await sb
       .from("prompt_fanout")
@@ -417,9 +537,12 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
   }
 
   if (name === "prompt_brands") {
-    const tag = input.tag as string;
+    const rawTag = input.tag as string;
     const prompt = input.prompt as string;
-    if (!tag || !prompt) return { error: "tag and prompt required" };
+    if (!rawTag || !prompt) return { error: "tag and prompt required" };
+    const rt = await resolveTag(sb, rawTag);
+    if (!rt.tag) return { error: `tag not found: "${rawTag}"`, did_you_mean: rt.candidates ?? [] };
+    const tag = rt.tag;
     await ensurePrompt(sb, tag, prompt);
     const { data, error } = await sb
       .from("prompt_brands")
