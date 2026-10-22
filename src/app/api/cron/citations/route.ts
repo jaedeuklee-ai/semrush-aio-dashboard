@@ -54,7 +54,7 @@ import { getState, runChunk } from "@/lib/backfill";
 // Scheduled mode OVERWRITES the last LOOKBACK_DAYS unconditionally (no skip),
 // so partially-filled days self-heal on the next run.
 //
-// RETENTION (rev 25): scheduled mode also deletes prompt_citations_daily rows
+// RETENTION: scheduled mode also deletes both citation tables rows
 // older than RETENTION_DAYS after the daily ingest — see the constant below.
 
 export const dynamic = "force-dynamic";
@@ -63,18 +63,14 @@ export const maxDuration = 300; // Vercel Pro allows up to 300s
 const JOB = "citations";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-// rev 25: prompt_citations_daily retention. The table is only the RAW MATERIAL
-// for deriving topic_citations; once a date is rebuilt, its prompt-grain rows
-// are dead weight for disk. Scheduled mode deletes rows older than
-// RETENTION_DAYS after each daily run. 60 > LOOKBACK_DAYS (5), so every date
-// the daily lookback still overwrites/rebuilds is always retained. Runs in
-// SCHEDULED MODE ONLY — manual/range/chain backfills must not delete the very
-// rows they just ingested; their old dates are cleaned up by the NEXT
-// scheduled run instead (harmless: rebuild already happened).
+// Both prompt-level raw rows and topic-level aggregate rows are retained for
+// 90 days. Pruning runs in SCHEDULED MODE ONLY after ingestion and rebuild.
+// Manual/range/chain backfills do not prune rows in the same request; any
+// older backfilled rows are subject to pruning on the next scheduled run.
 // NOTE: DELETE marks rows dead; autovacuum recycles the space for reuse. To
 // shrink the file on disk after the first big cleanup, run VACUUM FULL once
 // manually (locks the table while it runs — do it off-hours).
-const RETENTION_DAYS = 60;
+const RETENTION_DAYS = 90;
 
 function authorized(req: NextRequest): boolean {
   const auth = req.headers.get("authorization");
@@ -106,17 +102,27 @@ function daysAgoUTC(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Delete prompt_citations_daily rows older than RETENTION_DAYS. Returns the
-// number of rows deleted (count: "exact"). Errors are thrown to the caller —
-// the scheduled handler reports them without failing the whole run.
-async function pruneOldPromptRows(sb: SupabaseClient): Promise<number> {
+// Delete old rows from BOTH citation tables. Run only after scheduled rebuild.
+// A failure is reported per table; the other table is still attempted.
+async function pruneOldCitationRows(sb: SupabaseClient): Promise<{
+  cutoff: string;
+  tables: Record<string, { deleted: number } | { error: string }>;
+}> {
   const cutoff = daysAgoUTC(RETENTION_DAYS);
-  const { error, count } = await sb
-    .from("prompt_citations_daily")
-    .delete({ count: "exact" })
-    .lt("date", cutoff);
-  if (error) throw error;
-  return count ?? 0;
+  const tables: Record<string, { deleted: number } | { error: string }> = {};
+  for (const table of ["prompt_citations_daily", "topic_citations"] as const) {
+    try {
+      const { error, count } = await sb
+        .from(table)
+        .delete({ count: "exact" })
+        .lt("date", cutoff);
+      if (error) throw error;
+      tables[table] = { deleted: count ?? 0 };
+    } catch (e) {
+      tables[table] = { error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return { cutoff, tables };
 }
 
 async function getTags(sb: SupabaseClient): Promise<string[]> {
@@ -490,16 +496,9 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // rev 25: prune prompt_citations_daily rows older than RETENTION_DAYS.
-  // Runs AFTER the day loop so today's ingest/rebuild is never interfered
-  // with. A prune failure must not fail the sync — report it and move on.
-  let retention: { deleted: number; cutoff: string } | { error: string } | null = null;
-  try {
-    const deleted = await pruneOldPromptRows(sb);
-    retention = { deleted, cutoff: daysAgoUTC(RETENTION_DAYS) };
-  } catch (e) {
-    retention = { error: e instanceof Error ? e.message : String(e) };
-  }
+  // Prune both raw and aggregate citation rows after scheduled ingestion.
+  // Keep the cron successful even if retention fails; expose per-table errors.
+  const retention = await pruneOldCitationRows(sb);
 
   return NextResponse.json({
     ok: true,
