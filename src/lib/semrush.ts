@@ -105,6 +105,11 @@ export async function fetchVisibility(
 // Phase 3 baseline: topic-level cited sources (element 553cd819).
 // The topic is NOT in the response — it comes from the CBF_tags request
 // filter, so callers pass `tag` and we stamp it onto each row.
+//
+// NOTE (2026-07-03): the citations cron no longer calls this — it now uses
+// fetchRawCitations (element 404fb017, prompt-grain, batched by parent tag)
+// and derives topic_citations via the rebuild_topic_citations RPC. This
+// function is kept for ad-hoc use / fallback.
 // ---------------------------------------------------------------------------
 export interface SemrushCitationRow {
   source: string;
@@ -199,6 +204,64 @@ export async function fetchTopicCitations(
       total_responses: int(row.total_responses),
     };
   });
+}
+
+// ===========================================================================
+// Prompt-grain raw citations (element 404fb017). One response row = one
+// citation event (date x model x prompt x position x source), and every row
+// carries its FULL tag hierarchy in `tags` (comma-separated), so a single
+// call filtered by a PARENT tag (e.g. "it__non-brand") returns the rows of
+// every leaf underneath it — the caller fans rows out to leaf tags itself.
+// Verified: no pagination — the element returns all rows in one response.
+// No comparison window (not needed for ingestion).
+// ===========================================================================
+
+const RAW_CITATIONS_ELEMENT = "404fb017-7e44-41ec-896f-7138f731da60";
+
+export interface SemrushRawCitationRow {
+  model: string;
+  prompt: string;
+  position: number | null;
+  source: string;
+  domain_type: string | null;
+  tags: string; // comma-separated full hierarchy, e.g. "it,it__non-brand,it__non-brand__..."
+}
+
+export async function fetchRawCitations(
+  parentTag: string,
+  date: string,
+): Promise<SemrushRawCitationRow[]> {
+  const { key, workspace, project, element } = semrushCreds(
+    process.env.SEMRUSH_RAW_CITATIONS_ELEMENT_ID,
+    RAW_CITATIONS_ELEMENT,
+  );
+
+  const body = {
+    render_data: {
+      project_id: project,
+      filters: {
+        simple: { project_id: project },
+        advanced: {
+          op: "and",
+          filters: [
+            { op: "or", filters: [{ op: "eq", val: parentTag, col: "CBF_tags" }] },
+            { op: "gte", val: date, col: "CBF_date__start" },
+            { op: "lte", val: date, col: "CBF_date__end" },
+          ],
+        },
+      },
+    },
+  };
+
+  const rows = await postSemrush(workspace, element, key, body);
+  return rows.map((row) => ({
+    model: String(row.model ?? ""),
+    prompt: String(row.prompt ?? ""),
+    position: int(row.position),
+    source: String(row.source ?? ""),
+    domain_type: typeof row.domain_type === "string" ? row.domain_type : null,
+    tags: String(row.tags ?? ""),
+  }));
 }
 
 // ===========================================================================
@@ -398,3 +461,88 @@ export async function fetchPromptFanout(
     count: int(row.count),
   }));
 }
+
+// ============================================================================
+// ADD to src/lib/semrush.ts  (rev 26 — sentiment / NPS ingestion)
+// Twin of fetchVisibility: fetch ALL tags for one brand+day, no tag filter.
+// Element id comes from env SEMRUSH_SENTIMENT_ELEMENT_ID
+//   (value: 324c9c6a-2f30-426c-9bce-d692b5a5e52b — set in Vercel, not in code).
+// Response rows look like: { positive, negative, neutral, tag, project_id }.
+// Caller (sync) drops rows whose tag isn't in topic_whitelist, same as visibility.
+// ============================================================================
+export interface SemrushSentimentRow {
+  tag: string;
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
+export async function fetchSentiment(
+  brand: string,
+  date: string,
+): Promise<SemrushSentimentRow[]> {
+  const key = process.env.SEMRUSH_API_KEY;
+  const workspace = process.env.SEMRUSH_WORKSPACE_ID;
+  const project = process.env.SEMRUSH_PROJECT_ID;
+  const element = process.env.SEMRUSH_SENTIMENT_ELEMENT_ID;
+  if (!key || !workspace || !project || !element) {
+    throw new Error(
+      "Missing SEMRUSH_* env vars (SEMRUSH_API_KEY, SEMRUSH_WORKSPACE_ID, " +
+        "SEMRUSH_PROJECT_ID, SEMRUSH_SENTIMENT_ELEMENT_ID).",
+    );
+  }
+
+  // Same request shape as fetchVisibility: brand filter + single day
+  // (start=end). NO CBF_tags filter → returns every tag for this brand/day.
+  const body = {
+    render_data: {
+      project_id: project,
+      filters: {
+        simple: { project_id: project },
+        advanced: {
+          op: "and",
+          filters: [
+            { op: "or", filters: [{ op: "eq", val: brand, col: "CBF_brand" }] },
+            { op: "gte", val: date, col: "CBF_date__start" },
+            { op: "lte", val: date, col: "CBF_date__end" },
+          ],
+        },
+      },
+    },
+  };
+
+  const url = `https://api.semrush.com/apis/v4-raw/external-api/v1/workspaces/${workspace}/products/ai/elements/${element}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Apikey ${key}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`SEMrush sentiment ${res.status}: ${text.slice(0, 300)}`);
+  }
+  const json = (await res.json()) as { blocks?: { data?: unknown } };
+  const rows = json?.blocks?.data;
+  if (!Array.isArray(rows)) {
+    throw new Error("Unexpected SEMrush response shape (no blocks.data[]).");
+  }
+  return rows.map((r) => {
+    const row = r as Record<string, unknown>;
+    const n = (v: unknown) => {
+      const x = typeof v === "number" ? v : Number(v);
+      return Number.isFinite(x) ? Math.trunc(x) : 0;
+    };
+    return {
+      tag: String(row.tag ?? ""),
+      positive: n(row.positive),
+      negative: n(row.negative),
+      neutral: n(row.neutral),
+    };
+  });
+}
+
