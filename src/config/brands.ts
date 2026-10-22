@@ -1,17 +1,27 @@
-// Brand configuration.
-// `own` and `competitor` are the exact string values stored in
-// visibility_daily.brand (they must match what your ingestion writes).
-// Colors are the actual brand hues so that color itself encodes which
-// brand a series belongs to, consistently across every chart and table.
+// Brand configuration for Audio-only dashboard.
 
 export const BRANDS = {
   own: "LG",
   competitor: "Samsung",
+
+  // SEMrush ingestion brands
+  ingest: ["LG", "Samsung", "ASUS", "JBL", "Sonos"],
 } as const;
 
-export type BrandKey = (typeof BRANDS)[keyof typeof BRANDS];
+export type BrandKey = (typeof BRANDS.ingest)[number];
 
 export const BRAND_COLORS: Record<string, string> = {
-  [BRANDS.own]: "#A50034", // LG red
-  [BRANDS.competitor]: "#1428A0", // Samsung blue
+  LG: "#A50034",
+  Samsung: "#1428A0",
+  ASUS: "#00539B",
+  JBL: "#FF6600",
+  Sonos: "#222222",
 };
+
+// Audio category competitor mapping
+export const COMPETITOR_BY_CATEGORY: Record<string, string> = {
+  "Sound suite": "Sonos",
+  speaker: "JBL",
+};
+
+export const DEFAULT_COMPETITOR = "Samsung";
